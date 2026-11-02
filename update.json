@@ -1,9 +1,9 @@
 {
   "version": "1.0.0",
-  "build_number": 1,
-  "apk_url": "https://qbrahym02-cmyk.github.io/flutter-todo-ota-app/apk/todo-1.0.0-1.apk",
-  "sha256": "21868f7cde4e4a928b7a17b32c495dc138030476a9d52045f367782930deffaf",
-  "changelog": "• النسخة الأولى من تطبيق المهام\n• تحديث تلقائي عن بعد",
+  "build_number": 2,
+  "apk_url": "https://qbrahym02-cmyk.github.io/flutter-todo-ota-app/apk/todo-1.0.0-2.apk",
+  "sha256": "f6bc72d613ef5320ebc9aa84dafc96d295c9464939231fb1db2018f342c48a3d",
+  "changelog": "• تحسين اسم التطبيق في نسخة الويب\n• تحسينات عامة",
   "force": false,
   "min_supported_build": 0
 }
