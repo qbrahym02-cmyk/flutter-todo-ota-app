@@ -1,0 +1,14 @@
+{
+  "app_title": "مهامي",
+  "theme_color": "#6750A4",
+  "announcement": "أهلاً! هذا الإعلان جاي من السيرفر — عدّله من remote/config.json ويتغيّر عندك فوراً 🚀",
+  "maintenance": false,
+  "maintenance_message": "التطبيق تحت الصيانة، ارجع بعد شوي 🙏",
+  "empty_message": "ما عندك مهام. أضف أول مهمة! ✨",
+  "quick_tasks": ["شراء أغراض البيت", "ممارسة الرياضة", "قراءة 10 صفحات", "الرد على الإيميلات"],
+  "features": {
+    "show_stats": true,
+    "priorities": true,
+    "due_dates": true
+  }
+}

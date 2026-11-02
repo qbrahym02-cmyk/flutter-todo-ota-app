@@ -1,0 +1,38 @@
+# ينشر remote/config.json فوراً (بدون بناء التطبيق).
+# التغيير يوصل للمستخدمين خلال دقيقة إلى بضع دقائق.
+name: Publish remote config
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "remote/config.json"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-site
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate JSON
+        run: python3 -m json.tool remote/config.json > /dev/null
+      - uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          path: site
+      - name: Publish
+        run: |
+          cp remote/config.json site/config.json
+          cd site
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add config.json
+          git commit -m "Update remote config" || echo "nothing to commit"
+          git push origin gh-pages

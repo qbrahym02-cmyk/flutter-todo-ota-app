@@ -1,0 +1,133 @@
+# يبني نسخة جديدة من التطبيق وينشرها كتحديث عن بعد.
+# يشتغل تلقائياً عند أي تعديل على الكود (lib/ أو pubspec.yaml أو android/)
+# أو يدوياً من تبويب Actions ← Release app update ← Run workflow.
+name: Release app update
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "lib/**"
+      - "pubspec.yaml"
+      - "android/**"
+      - "web/**"
+      - "remote/update_settings.json"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-site
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      BUILD_NUMBER: ${{ github.run_number }}
+      REPO_NAME: ${{ github.event.repository.name }}
+      SITE_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Restore signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::KEYSTORE_BASE64 secret is missing — updates would not install over the old app."
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > android/app/upload-keystore.jks
+          cat > android/key.properties <<PROPS
+          storePassword=$KEYSTORE_PASSWORD
+          keyPassword=$KEY_PASSWORD
+          keyAlias=$KEY_ALIAS
+          storeFile=upload-keystore.jks
+          PROPS
+
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+
+      - name: Build APK
+        run: |
+          flutter build apk --release --build-number=$BUILD_NUMBER \
+            --dart-define=REMOTE_BASE_URL=$SITE_URL
+
+      - name: Build web (PWA)
+        run: |
+          flutter build web --release --base-href /$REPO_NAME/ \
+            --dart-define=REMOTE_BASE_URL=$SITE_URL
+
+      - name: Checkout published site (gh-pages)
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          path: site
+
+      - name: Assemble site
+        run: |
+          VERSION=$(grep '^version:' pubspec.yaml | sed 's/version: *//; s/+.*//')
+          # نسخة الويب
+          rsync -a --delete \
+            --exclude '.git' --exclude 'apk' --exclude 'config.json' \
+            --exclude 'update.json' --exclude '.nojekyll' \
+            build/web/ site/
+          touch site/.nojekyll
+          # ملف APK (نحتفظ بآخر نسخة فقط)
+          mkdir -p site/apk && rm -f site/apk/*.apk
+          APK_NAME="todo-$VERSION-$BUILD_NUMBER.apk"
+          cp build/app/outputs/flutter-apk/app-release.apk "site/apk/$APK_NAME"
+          cp build/app/outputs/flutter-apk/app-release.apk "site/apk/latest.apk"
+          SHA=$(sha256sum "site/apk/$APK_NAME" | cut -d' ' -f1)
+          # إعدادات عن بعد
+          cp remote/config.json site/config.json
+          # ملف التحديث
+          VERSION="$VERSION" SHA="$SHA" APK_URL="$SITE_URL/apk/$APK_NAME" python3 - <<'PY'
+          import json, os
+          s = json.load(open("remote/update_settings.json", encoding="utf-8"))
+          out = {
+              "version": os.environ["VERSION"],
+              "build_number": int(os.environ["BUILD_NUMBER"]),
+              "apk_url": os.environ["APK_URL"],
+              "sha256": os.environ["SHA"],
+              "changelog": s.get("changelog", ""),
+              "force": s.get("force", False),
+              "min_supported_build": s.get("min_supported_build", 0),
+          }
+          json.dump(out, open("site/update.json", "w", encoding="utf-8"), ensure_ascii=False, indent=2)
+          print(json.dumps(out, ensure_ascii=False, indent=2))
+          PY
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "APK_NAME=$APK_NAME" >> $GITHUB_ENV
+
+      - name: Publish to GitHub Pages
+        working-directory: site
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Release $VERSION ($BUILD_NUMBER)" || echo "nothing to commit"
+          git push origin gh-pages
+
+      - name: GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.VERSION }}-${{ env.BUILD_NUMBER }}
+          name: v${{ env.VERSION }} (build ${{ env.BUILD_NUMBER }})
+          files: site/apk/${{ env.APK_NAME }}
